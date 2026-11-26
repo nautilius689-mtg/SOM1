@@ -1,0 +1,193 @@
+ 
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SÖM - Sesli Ön Muhasebe</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eef2f6;font-family:Arial,sans-serif;color:#172638}
+header{background:#102b46;color:white;padding:22px;text-align:center}
+main{max-width:700px;margin:auto;padding:15px}
+section{background:white;padding:16px;border-radius:14px;margin-bottom:15px}
+input,select,textarea,button{width:100%;padding:13px;margin:6px 0;border-radius:8px;font-size:16px;border:1px solid #ccd4dd}
+button{background:#174b78;color:white;border:0;font-weight:bold}
+.voice{background:#087f65}
+small{color:#64748b}
+h2{margin-top:0;font-size:19px}
+.record{padding:12px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere}
+.total{font-size:25px;font-weight:bold;color:#087f65}
+</style>
+</head>
+<body>
+<header>
+<h1>SÖM</h1>
+Sesli Ön Muhasebe
+</header>
+<main>
+<section>
+<h2>İşlem Kaydı</h2>
+<button class="voice" onclick="voice()">🎙️ Sesli Komut</button>
+<textarea id="note" placeholder="İşlem açıklaması veya sesli komut"></textarea>
+<select id="type">
+<option>Satış</option>
+<option>Alış</option>
+<option>Masraf</option>
+<option>Tahsilat</option>
+<option>Ödeme</option>
+<option>Depo Transferi</option>
+</select>
+<input id="date" type="date">
+<input id="customer" placeholder="Cari / Müşteri / Firma">
+<input id="product" placeholder="Ürün adı">
+<input id="qty" type="number" min="1" value="1" placeholder="Adet">
+<input id="price" type="number" min="0" step="0.01" placeholder="Birim fiyat TL">
+<input id="cost" type="number" min="0" step="0.01" placeholder="Birim maliyet TL">
+<select id="payment">
+<option>Nakit</option>
+<option>Kredi Kartı</option>
+<option>IBAN</option>
+<option>Açık Hesap</option>
+</select>
+<select id="shop">
+<option>Yavuz Ticaret</option>
+<option>Asel Ticaret</option>
+<option>Gümüş Mobilya</option>
+</select>
+<select id="warehouse">
+<option>Mağaza</option>
+<option>Rahmi Amca Depo</option>
+<option>Kayseri Depo</option>
+</select>
+<button onclick="save()">İşlemi Kaydet</button>
+</section>
+<section>
+<h2>Bugünkü Satışlar</h2>
+<div class="total" id="sales">0 TL</div>
+<h2>Bugünkü Masraflar</h2>
+<div class="total" id="expenses">0 TL</div>
+<h2>Bugünkü Brüt Satış Kârı</h2>
+<div class="total" id="profit">0 TL</div>
+</section>
+<section>
+<h2>Kayıtlar</h2>
+<input id="search" placeholder="Ürün veya cari ara" oninput="render()">
+<div id="records"></div>
+</section>
+<section>
+<h2>Veri Yedekleme</h2>
+<button onclick="backup()">Yedek Dosyası Oluştur</button>
+<input type="file" accept=".json" onchange="restore(event)">
+</section>
+</main>
+<script>
+const el=id=>document.getElementById(id);
+const today=()=>new Date().toLocaleDateString('sv-SE');
+el('date').value=today();
+let data=JSON.parse(localStorage.getItem('som_records')||'[]');
+const money=n=>Number(n).toLocaleString('tr-TR',{maximumFractionDigits:2})+' TL';
+function persist(){
+localStorage.setItem('som_records',JSON.stringify(data));
+}
+function save(){
+let qty=Number(el('qty').value);
+let price=Number(el('price').value);
+if(!el('date').value||qty<=0||price<0||el('price').value===''){
+alert('Tarih, adet ve tutarı kontrol edin.');
+return;
+}
+let r={
+id:Date.now(),
+date:el('date').value,
+type:el('type').value,
+customer:el('customer').value,
+product:el('product').value,
+qty:qty,
+price:price,
+cost:Number(el('cost').value),
+payment:el('payment').value,
+shop:el('shop').value,
+warehouse:el('warehouse').value,
+note:el('note').value,
+total:qty*price
+};
+data.push(r);
+persist();
+render();
+['customer','product','price','cost','note'].forEach(x=>el(x).value='');
+el('qty').value=1;
+alert('İşlem kaydedildi.');
+}
+function render(){
+let sales=0,expenses=0,profit=0;
+data.filter(r=>r.date===today()).forEach(r=>{
+if(r.type==='Satış'){
+sales+=r.total;
+profit+=r.total-r.cost*r.qty-(r.payment==='Kredi Kartı'?r.total*0.03:0);
+}
+if(r.type==='Masraf')expenses+=r.total;
+});
+el('sales').textContent=money(sales);
+el('expenses').textContent=money(expenses);
+el('profit').textContent=money(profit);
+let q=el('search').value.toLocaleLowerCase('tr');
+let box=el('records');
+box.replaceChildren();
+data.slice().reverse().filter(r=>JSON.stringify(r).toLocaleLowerCase('tr').includes(q)).forEach(r=>{
+let div=document.createElement('div');
+div.className='record';
+div.textContent=[r.date,r.type,r.customer,r.product,r.qty+' adet',money(r.total),r.payment,r.shop,r.warehouse,r.note].filter(Boolean).join(' | ');
+let b=document.createElement('button');
+b.textContent='Kaydı Sil';
+b.onclick=()=>{
+if(confirm('Bu kayıt silinsin mi?')){
+data=data.filter(x=>x.id!==r.id);
+persist();
+render();
+}
+};
+div.appendChild(b);
+box.appendChild(div);
+});
+}
+function voice(){
+let SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(!SR){
+alert('Sesli giriş için Chrome veya telefon klavyesindeki mikrofonu kullanın.');
+return;
+}
+let rec=new SR();
+rec.lang='tr-TR';
+rec.onresult=e=>{
+el('note').value=e.results[0][0].transcript;
+};
+rec.onerror=()=>alert('Mikrofon iznini ve internet bağlantısını kontrol edin.');
+rec.start();
+}
+function backup(){
+let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+let url=URL.createObjectURL(blob);
+let a=document.createElement('a');
+a.href=url;
+a.download='SOM-Yedek-'+today()+'.json';
+a.click();
+setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function restore(e){
+try{
+let file=e.target.files[0];
+if(!file)return;
+let records=JSON.parse(await file.text());
+if(!Array.isArray(records)||!records.every(r=>r&&typeof r.total==='number'&&typeof r.date==='string'))throw Error();
+if(confirm('Mevcut kayıtlar yedekteki kayıtlarla değiştirilsin mi?')){
+data=records;
+persist();
+render();
+}
+}catch(err){alert('Geçersiz yedek dosyası.');}
+}
+render();
+</script>
+</body>
+</html>
